@@ -1,0 +1,14 @@
+package com.auce.bank;
+
+public enum Status
+{
+	REQUESTED,
+	NOT_IMPLEMENTED,
+	NOT_COMPLETE,
+	NOT_FOUND,
+	NOT_ALLOWED,
+	NOT_VALID,
+	NOT_AUTHENTICATED,
+	NOT_AUTHORIZED,
+	EXECUTED
+}
