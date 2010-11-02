@@ -2,3 +2,8 @@ DS_Store
 
 # exclude maven2 target directory
 */target/*
+
+# exclude eclipse .settings 
+*/.settings/*
+*/.classpath
+*/.project
