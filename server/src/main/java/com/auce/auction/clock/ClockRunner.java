@@ -17,7 +17,6 @@ import com.auce.auction.event.Purchase;
 import com.auce.auction.event.Run;
 import com.auce.auction.event.Tick;
 import com.auce.auction.repository.Repository;
-import com.auce.market.Market;
 import com.auce.util.component.ComponentSupport;
 import com.auce.util.multicast.MulticastChannel;
 import com.auce.util.multicast.MulticastChannelEvent;
