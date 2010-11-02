@@ -1,3 +1,4 @@
 DS_Store
 
+# exclude maven2 target directory
 */target/*
