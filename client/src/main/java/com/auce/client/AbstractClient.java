@@ -1,7 +1,7 @@
 package com.auce.client;
 
+import java.io.IOException;
 import java.util.HashMap;
-
 import java.util.Map;
 
 import org.slf4j.Logger;
@@ -20,56 +20,34 @@ import com.auce.auction.event.Quote;
 import com.auce.auction.event.Sale;
 import com.auce.auction.event.Tick;
 import com.auce.auction.repository.Repository;
-import com.auce.bank.Account;
-import com.auce.bank.Payment;
-import com.auce.bank.Status;
-import com.auce.client.bank.Bank;
-import com.auce.client.bank.BankListener;
-import com.auce.client.bank.Mutation;
-import com.auce.client.bank.Withdrawal;
 import com.auce.client.strategy.PurchasingStrategy;
 import com.auce.client.strategy.SellingStrategy;
 import com.auce.util.multicast.MulticastChannel;
 import com.auce.util.multicast.MulticastChannelEvent;
 import com.auce.util.multicast.MulticastChannelListener;
 
-public abstract class AbstractClient 
-	implements Client, MulticastChannelListener, BankListener
+public abstract class AbstractClient implements Client, MulticastChannelListener
 {
-	protected Logger				logger; 
+	final static private Logger LOGGER = LoggerFactory.getLogger( AbstractClient.class );
+	
 	protected Trader				trader;
-	protected Bank					bank;
 	protected Repository			repository;
 	protected PurchasingStrategy	purchasingStrategy;
 	protected SellingStrategy		sellingStrategy;
 	protected EventMapper			mapper;
-	protected long					magicNumber;
 	protected Map<String,Purchase>	purchases;
-	private final boolean			directDebit;
 	
-	public AbstractClient( Repository repository, Bank bank )
+	public AbstractClient( Repository repository )
 	{
-		this.purchases = new HashMap<String,Purchase>();
-		
-		this.directDebit = Boolean.parseBoolean( 
-			System.getProperty( "auction.direct.debit" ) );
-
 		String traderId = System.getProperty( "trader.id" );
-		
-		this.logger = LoggerFactory.getLogger( 
-			this.getClass().getSimpleName() + "-" + traderId );		
-
-		this.trader = new Trader( traderId );
+		this.trader = new Trader( traderId );		
 
 		this.repository = repository;
 		this.repository.addRepositoryListener( this );
 		this.repository.addTrader( trader );			
-
+          
 		this.mapper = new EventMapper( this.repository );
-
-		this.bank = bank;
-		this.bank.addBankListener( this );
-		this.bank.openAccount( trader.getId(), System.getProperty( "trader.city" ) );
+		this.purchases = new HashMap<String,Purchase>();
 	}	
 	
 	public PurchasingStrategy getPurchasingStrategy ()
@@ -80,11 +58,6 @@ public abstract class AbstractClient
 	public SellingStrategy getSellingStrategy ()
 	{
 		return this.sellingStrategy;
-	}
-	
-	public Bank getBank()
-	{
-		return this.bank;
 	}
 	
 	public Repository getRepository()
@@ -107,184 +80,137 @@ public abstract class AbstractClient
 		this.sellingStrategy = strategy;
 	}
 	
-	public void handleAccount( Account account )
+	protected void handleEvent( MulticastChannel source, Tick tick )
 	{
-		trader.setAccount( account );
-	}
-	
-	public void handlePayment( Payment payment )
-	{
-		if ( Status.EXECUTED != payment.getStatus() )
+		Bid bid = this.purchasingStrategy.doBid( tick );
+		
+		if ( bid != null )
 		{
-			logger.error( "PAYMENT: {},{},{},{},{}", 
-				new Object[] {
-					payment.getDebitAccountNumber(),
-					payment.getCreditAccountNumber(),
-					payment.getDescription(),
-					payment.getAmount(),
-					payment.getStatus()
-				});
-		}
-	}
-	
-	public void handleMutation( Mutation mutation )
-	{
-		logger.info( "{}: {},{},{},{}",
-			new Object[] {
-				mutation.getClass().getSimpleName().toUpperCase(),
-				mutation.getAccountNumber(),
-				mutation.getNameOfHolder(),
-				mutation.getDescription(),
-				mutation.getAmount() 
-			});
-
-		if ( mutation instanceof Withdrawal )
-		{
-			String referenceNumber = mutation.getDescription();
+			String string = this.mapper.write( bid ) ;
 			
-			Purchase purchase = this.purchases.get( referenceNumber );
-			
-			if ( purchase != null )
+			try
 			{
-				this.purchases.remove( referenceNumber );
+				source.sendMessage( this.trader.getId(), string );
 				
-				this.trader.addPurchase( purchase );
+				LOGGER.info( "BID: {}, price={}, qty={}", 
+					new Object[] {
+						bid.getLot().getProduct().getId(),
+						bid.getPrice(),
+						bid.getQuantity()
+					});
+			}
+			catch ( IOException e )
+			{
+				e.printStackTrace();
+			}
+		}		
+	}
+	
+	protected void handleEvent( MulticastChannel source, Purchase purchase )
+	{
+		if ( this.trader.equals( purchase.getTrader() ) )
+		{
+			LOGGER.info( "PURCHASE: {}, price={}, qty={}", 
+				new Object[] { 
+					purchase.getLot().getProduct().getId(),
+					purchase.getPrice(),
+					purchase.getQuantity()
+				});
+			
+			String referenceNumber = purchase.getReferenceNumber();
+			
+			this.purchases.put( referenceNumber, purchase );	
+		}	
+	}
+	
+	protected void handleEvent( MulticastChannel source, Quote quote )
+	{		
+		Offer offer = this.sellingStrategy.doOffer( quote );
+		
+		if ( offer != null )
+		{
+			String message = this.mapper.write( offer );
+			
+			try
+			{
+				source.sendMessage( this.trader.getId(), message );
 				
-				Stock stock = this.trader.findStock( 
-					purchase.getProduct(), false );
-				
-				if ( stock != null )
-				{
-					logger.info( "in STOCK: {},{}", 
-						stock.getProduct().getId(),
-						stock.getQuantity() );
-				}
-			}			
+				LOGGER.info( "OFFER: {}, qty={}, ref={}",
+					new Object[] {
+						offer.getProduct().getId(), 
+						offer.getQuantity(),
+						offer.getReferenceNumber()
+					}
+				);
+			}
+			catch( IOException e )
+			{
+				e.printStackTrace();
+			}
+		}		
+	}
+	
+	protected void handleEvent( MulticastChannel source, Sale sale )
+	{
+		if ( this.trader.equals( sale.getTrader() ) )
+		{
+			LOGGER.info( "SALE: {}, price={}, qty={}", new Object[] {
+				sale.getProduct().getId(),
+				sale.getPrice(),
+				sale.getQuantity()
+			});
+			
+			this.trader.addSale( sale );
+			
+			Stock stock = this.trader.findStock( 
+				sale.getProduct(), false );
+			
+			if ( stock != null )
+			{
+				LOGGER.info( "in STOCK: {},{}", 
+					stock.getProduct().getId(),
+					stock.getQuantity() );
+			}
 		}
 	}
-
+	
+	protected void handleEvent( MulticastChannel source, Event event )
+	{
+		if ( event instanceof Tick )
+		{
+			this.handleEvent( source, (Tick)event );
+		}
+		else if ( event instanceof Purchase )
+		{
+			this.handleEvent( source, (Purchase)event );
+		}
+		else if ( event instanceof Quote )
+		{
+			this.handleEvent( source, (Quote)event );					
+		}
+		else if ( event instanceof Sale )
+		{
+			this.handleEvent( source, (Sale)event );					
+		}
+	}
+	
 	public void handleEvent ( MulticastChannelEvent messageEvent )
 	{
 		String sender = messageEvent.getSender();
 		
 		if ( sender.equals( this.trader.getId() ) ) return;
 		
-		MulticastChannel channel = (MulticastChannel)messageEvent.getSource(); 
-
 		for ( String text : messageEvent.lines() )
 		{		
 			try
 			{
 				Event event = this.mapper.read( sender, text );
-				
-				if ( event instanceof Tick )
-				{
-					Tick tick = (Tick)event;
-					
-					Bid bid = this.purchasingStrategy.doBid( tick );
-					
-					if ( bid != null )
-					{
-						String string = this.mapper.write( bid ) ;
-						
-						channel.sendMessage( this.trader.getId(), string );
-						
-						logger.info( "BID: {}, price={}, qty={}", 
-							new Object[] {
-								bid.getLot().getProduct().getId(),
-								bid.getPrice(),
-								bid.getQuantity()
-							});
-					}
-				}
-				else if ( event instanceof Purchase )
-				{
-					Purchase purchase = (Purchase)event;
-					
-					if ( this.trader.equals( purchase.getTrader() ) )
-					{
-						logger.info( "PURCHASE: {}, price={}, qty={}", 
-							new Object[] { 
-								purchase.getLot().getProduct().getId(),
-								purchase.getPrice(),
-								purchase.getQuantity()
-							});
-						
-						String referenceNumber = purchase.getReferenceNumber();
-						
-						this.purchases.put( referenceNumber, purchase );
-						
-						if ( this.directDebit == false )
-						{
-							// no direct debit, need to do payment ourselves
-							
-							this.bank.doPayment( 
-								purchase.getAccountNumber(),
-								referenceNumber,
-								purchase.getPrice() * purchase.getQuantity() );
-						}
-						else
-						{
-							// server will perform direct debit payment
-						}
-					}
-				}
-				else if ( event instanceof Quote )
-				{
-					Quote quote = (Quote)event;
-					
-					Offer offer = this.sellingStrategy.doOffer( quote );
-					
-					if ( offer != null )
-					{
-						String message = this.mapper.write( offer );
-						
-						channel.sendMessage( this.trader.getId(), message );
-						
-						logger.info( "OFFER: {}, qty={}, ref={}",
-							new Object[] {
-								offer.getProduct().getId(), 
-								offer.getQuantity(),
-								offer.getReferenceNumber()
-							}
-						);
-					}
-				}
-				else if ( event instanceof Sale )
-				{
-					Sale sale = (Sale)event;
-					
-					if ( this.trader.equals( sale.getTrader() ) )
-					{
-						logger.info( "SALE: {}, price={}, qty={}", new Object[] {
-							sale.getProduct().getId(),
-							sale.getPrice(),
-							sale.getQuantity()
-						});
-						
-						this.trader.addSale( sale );
-						
-						Stock stock = this.trader.findStock( 
-							sale.getProduct(), false );
-						
-						if ( stock != null )
-						{
-							logger.info( "in STOCK: {},{}", 
-								stock.getProduct().getId(),
-								stock.getQuantity() );
-						}
-					}
-				}
+
+				this.handleEvent( messageEvent.getSource(), event );
 			}
 			catch( Exception e )
 			{
 				e.printStackTrace();
-				
-//				logger.error( 
-//					"{} with {} ({})", 
-//					new Object[] {
-//						e.getClass().getSimpleName(), text, e.getMessage()
-//					});
 			}
 		}
 	}
@@ -295,7 +221,7 @@ public abstract class AbstractClient
 		{
 			Clock clock = (Clock)entity;
 			
-			logger.info( "adding clock: {}", clock.getId() );
+			LOGGER.info( "adding clock: {}", clock.getId() );
 			
 			MulticastChannel channel = 
 				new MulticastChannel( "client-" + clock.getId() );

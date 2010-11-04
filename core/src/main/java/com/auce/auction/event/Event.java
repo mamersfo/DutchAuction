@@ -6,8 +6,8 @@ public abstract class Event extends Entity
 {
 	public enum Type
 	{
+		TWEET,
 		BID,
-		ENTRY,
 		OFFER,
 		PURCHASE,
 		QUOTE,

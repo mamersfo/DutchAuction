@@ -151,7 +151,7 @@ public class Monitor extends JFrame implements RepositoryListener
 		}
 		else if ( entity instanceof Trader )
 		{
-			LOGGER.info( "added trader: {}", entity );
+			LOGGER.info( "added trader: {}", ((Trader) entity).getId() );
 			
 			this.tradePanel.invalidate();
 			
@@ -175,16 +175,13 @@ public class Monitor extends JFrame implements RepositoryListener
 		{
 			Utilities.loadProperties( "monitor.conf" );
 
-			final Monitor frame = 
-				new Monitor( System.getProperty( "monitor.title" ) );
+			final Monitor frame = new Monitor( System.getProperty( "monitor.title" ) );
 			
 			// frame
 			
 			frame.setSize( 
-				Integer.parseInt( 
-					System.getProperty( "monitor.window.width", "1024" ) ), 
-				Integer.parseInt( 
-					System.getProperty( "monitor.window.height", "760" ) ) );
+				Integer.parseInt(  System.getProperty( "monitor.window.width", "1024" ) ), 
+				Integer.parseInt(  System.getProperty( "monitor.window.height", "760" ) ) );
 			
 			frame.addWindowListener( new WindowAdapter()
 			{

@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 
 import com.auce.auction.entity.Lot;
 import com.auce.auction.entity.Product;
+import com.auce.auction.entity.Trader;
 import com.auce.auction.event.Bid;
 import com.auce.auction.event.Event;
 import com.auce.auction.event.EventMapper;
@@ -21,26 +22,32 @@ import com.auce.bank.AbstractAccount;
 import com.auce.bank.Account;
 import com.auce.bank.AccountType;
 import com.auce.bank.Bank;
+import com.auce.bank.Instruction;
+import com.auce.bank.Opening;
+import com.auce.bank.util.Observer;
 import com.auce.util.component.ComponentSupport;
 import com.auce.util.multicast.MulticastChannel;
 import com.auce.util.multicast.MulticastChannelEvent;
 import com.auce.util.multicast.MulticastChannelListener;
 
-public class Market extends ComponentSupport implements MulticastChannelListener
+public class Market extends ComponentSupport implements MulticastChannelListener, Observer<Instruction>
 {
 	final static protected Logger LOGGER = LoggerFactory.getLogger( Market.class );
 	
 	private final Bank				bank;
 	private final Account			account;
+	private final Repository		repository;
+	private final EventMapper		mapper;
 	protected MulticastChannel		channel;
 	protected Map<String,Quoter>	quoters;
-	protected Repository			repository;
-	protected EventMapper			mapper;
 	
-	public Market( String id, Bank bank )
+	public Market( String id, Repository repository, Bank bank )
 	{
 		super( id );
 		
+		this.repository = repository;
+		this.mapper = new EventMapper( this.repository );
+
 		this.bank = bank;
 		
 		String accountNumber = bank.issueAccountNumber();
@@ -57,16 +64,9 @@ public class Market extends ComponentSupport implements MulticastChannelListener
 			// channel
 			
 			this.channel = new MulticastChannel( this.id );
-			
-			this.channel.setGroup( 
-				InetAddress.getByName( System.getProperty( "market.address" ) ) );
-	
-			this.channel.setPort( 
-				Integer.parseInt( System.getProperty( "market.port" ) ) );
-			
-			this.channel.setTtl( 
-				Integer.parseInt( System.getProperty( "market.ttl" ) ) );
-			
+			this.channel.setGroup( InetAddress.getByName( System.getProperty( "market.address" ) ) );
+			this.channel.setPort( Integer.parseInt( System.getProperty( "market.port" ) ) );
+			this.channel.setTtl( Integer.parseInt( System.getProperty( "market.ttl" ) ) );
 			this.channel.addChannelListener( this );
 		}
 		catch( UnknownHostException e )
@@ -116,34 +116,6 @@ public class Market extends ComponentSupport implements MulticastChannelListener
 		catch( Exception e )
 		{
 			LOGGER.error( e.getMessage() );
-		}
-	}
-	
-	public void handleEvent ( MulticastChannelEvent messageEvent )
-	{
-		String sender = messageEvent.getSender();
-		
-		for ( String text : messageEvent.lines() )
-		{
-			try
-			{
-				Event event =  this.mapper.read( sender, text );
-				
-				if ( event != null && event instanceof Offer )
-				{
-					Offer offer = (Offer)event;
-					
-					this.addOffer( offer );
-					
-					Buyer buyer = new Buyer( this, offer );
-					
-					new Thread( buyer ).start();					
-				}
-			}
-			catch( Exception e )
-			{
-				LOGGER.error( e.getMessage(), e );
-			}
 		}
 	}
 	
@@ -210,13 +182,6 @@ public class Market extends ComponentSupport implements MulticastChannelListener
 		return repository;
 	}
 
-	public void setRepository ( Repository repository )
-	{
-		this.repository = repository;
-		
-		this.mapper = new EventMapper( this.repository );
-	}
-
 	public Quoter getQuoter ( Product product )
 	{
 		return this.quoters.get( product.getId() );
@@ -254,8 +219,110 @@ public class Market extends ComponentSupport implements MulticastChannelListener
 	}
 
 	@Override
-	protected void afterRunning() {
-		// TODO Auto-generated method stub
+	protected void afterRunning() 
+	{
+		// TODO Auto-generated method stub  	
+	}
+
+	public void handleEvent ( MulticastChannelEvent messageEvent )
+	{
+		String sender = messageEvent.getSender();
 		
+		if ( this.id.equals( sender ) ) return;
+		
+		Trader trader = this.repository.findTrader( sender );
+		
+		if ( trader == null )
+		{
+			trader = new Trader( sender ) ;
+			
+			String accountNumber = this.bank.issueAccountNumber();
+			this.bank.openAccount( AccountType.CHECKING, accountNumber, sender, "Rotterdam" );		
+			Account account = this.bank.findAccount(accountNumber);
+			((AbstractAccount)account).setBalance( Long.parseLong( System.getProperty( "bank.start.amount" ) ) );
+			trader.setAccount( account );
+			
+			this.repository.addTrader( trader );			
+		}	
+		
+		for ( String text : messageEvent.lines() )
+		{
+			try
+			{
+				Event event =  this.mapper.read( sender, text );
+				
+				if ( event != null )
+				{
+					if ( event instanceof Offer )
+					{
+						Offer offer = (Offer)event;
+						
+						this.addOffer( offer );
+						
+						Buyer buyer = new Buyer( this, offer );
+						
+						new Thread( buyer ).start();
+					}
+				}
+			}
+			catch( Exception e )
+			{
+				LOGGER.error( e.getMessage(), e );
+			}
+		}
+	}
+	
+	public void addEvent( Instruction instruction ) 
+	{
+		if ( instruction instanceof Opening )
+		{
+			Opening opening = (Opening)instruction;
+			
+			if ( AccountType.CHECKING == opening.getAccountType() && com.auce.bank.Status.EXECUTED == opening.getStatus() )
+			{
+				String id = opening.getNameOfHolder();
+				
+				String accountNumber = opening.getAccountNumber();
+
+				Account account = this.bank.findAccount( accountNumber );
+				
+				if ( account != null )
+				{
+					long amount = 0;	
+					
+					Trader trader = this.repository.findTrader( id );
+					
+					if ( trader == null )
+					{
+						trader = new Trader( id );
+						
+						this.repository.addTrader( trader );
+						
+						amount = Long.parseLong( System.getProperty( "bank.start.amount" ) );					
+					}
+					else
+					{
+						amount = trader.getAccount().getBalance();						
+					}
+					
+					trader.setAccount( account );
+	
+					this.bank.doPayment( 
+						accountNumber, 
+						this.account.getAccountNumber(), 
+						"welcome " + id, 
+						amount
+					);
+					
+					LOGGER.info( 
+						"added trader: {} with account number: {}, balance: {}", 
+						new Object[] { id, accountNumber, amount } );
+				}
+				else
+				{
+					LOGGER.error( "account not found: {}", accountNumber );
+				}
+			}
+		}
 	}
 }

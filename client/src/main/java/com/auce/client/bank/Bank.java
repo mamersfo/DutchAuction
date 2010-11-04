@@ -14,4 +14,6 @@ public interface Bank
 	public void addBankListener( BankListener listener );
 	
 	public void removeBankListener( BankListener listener );	
+	
+	public boolean isDirectDebit();	
 }

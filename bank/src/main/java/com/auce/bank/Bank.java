@@ -1,8 +1,5 @@
 package com.auce.bank;
 
-
-
-
 public interface Bank
 {
 	public Account findAccount( final String accountNumber );
@@ -21,5 +18,5 @@ public interface Bank
 			final String description,
 			final long amounts );
 
-	public String issueAccountNumber();	
+	public String issueAccountNumber();
 }

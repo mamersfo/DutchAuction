@@ -1,10 +1,6 @@
 
 package com.auce.util.multicast;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.net.DatagramPacket;
@@ -177,6 +173,8 @@ public class MulticastChannel extends ComponentSupport
 
 			this.socket.receive( packet );
 
+			/*
+
 			DataInputStream istream = 
 				new DataInputStream( 
 					new ByteArrayInputStream( 
@@ -194,11 +192,22 @@ public class MulticastChannel extends ComponentSupport
 				
 				return;
 			}
+			
 
 			String sender = istream.readUTF();
 			
 			String text = istream.readUTF();
 			
+			*/
+			
+			String string = new String ( this.packet.getData(), 0, this.packet.getLength() );
+			
+			String[] parts = string.split( ":");
+			
+			String sender = parts[0];
+			
+			String text = parts[1];
+
 			if ( sender.equals( this.id ) == false )
 			{
 				this.fireChannelMessage( sender, text );
@@ -218,20 +227,31 @@ public class MulticastChannel extends ComponentSupport
 	{
 		if ( this.socket == null ) return;
 
+		/*
 		ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
 		DataOutputStream dataStream = new DataOutputStream( byteStream );
-
-		dataStream.writeLong( 4969756929653643804L );
+		dataStream.writeLong( MAGIC_NUMBER );
 		dataStream.writeUTF( userId );
 		dataStream.writeUTF( message );
 		dataStream.close();
 
 		byte[] data = byteStream.toByteArray();
+		 */
+		
+		StringBuilder sb = new StringBuilder();
+		sb.append( userId );
+		sb.append( ":" );
+		sb.append( message );
+
+		String string = sb.toString();
+		
+		byte[] data = string.getBytes();
+		int length = string.length();
 
 		DatagramPacket packet = 
 			new DatagramPacket( 
 				data, 
-				data.length, 
+				length, 
 				this.group, 
 				this.socket.getLocalPort() );
 
@@ -239,8 +259,8 @@ public class MulticastChannel extends ComponentSupport
 	}
 
 	@Override
-	protected void afterRunning() {
-		// TODO Auto-generated method stub
-		
+	protected void afterRunning() 
+	{
+		// TODO Auto-generated method stub	
 	}
 }

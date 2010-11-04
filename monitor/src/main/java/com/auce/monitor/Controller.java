@@ -12,9 +12,10 @@ import org.slf4j.LoggerFactory;
 import com.auce.auction.entity.Clock;
 import com.auce.auction.entity.Product;
 import com.auce.auction.entity.Trader;
-import com.auce.auction.event.Entry;
+import com.auce.auction.event.Bid;
 import com.auce.auction.event.Event;
 import com.auce.auction.event.EventMapper;
+import com.auce.auction.event.Offer;
 import com.auce.auction.event.Quote;
 import com.auce.auction.event.Run;
 import com.auce.auction.event.Tick;
@@ -117,63 +118,61 @@ public class Controller implements MulticastChannelListener
 		{
 			Event event = this.mapper.read( sender, line );
 			
-			if ( event == null ) continue;
-			
-			if ( event instanceof Tick )
-			{
-				Tick price = (Tick)event;
-				
-				ClockModel clockModel = this.clockModels.get( sender );
-				
-				clockModel.setValue( price.getValue() );
-			}
-			else if ( event instanceof Run )
-			{
-				Run run = (Run)event;
-				
-				if ( run.getLot() == null )
+			if ( event != null )
+			{			
+				if ( event instanceof Tick )
 				{
-					LOGGER.info( "could not find lot for auction: {}", run.getId() );
-				}
-				
-				ClockModel clockModel = this.clockModels.get( run.getClock().getId() );
-				
-				if ( clockModel != null )
-				{
-					clockModel.setRun( run );
-				}
-				else 
-				{
-					LOGGER.error( "clock not found: {}", run.getClock().getId() );
-				}
-			}
-			else if ( event instanceof Entry )
-			{
-				Entry entry = (Entry)event;
-				
-				LOGGER.info( "received entry: {}", entry );
-				
-				Trader trader = new Trader( entry.getTraderId() );
-				
-				this.repository.addTrader( trader );
-			}
-			else if ( event instanceof Quote )
-			{
-				Quote quote = (Quote)event;
-				
-				Product product = quote.getProduct();
-				
-				if ( product != null )
-				{
-					PriceGraphModel model = 
-						this.graphModel.get( product.getId() );
+					Tick price = (Tick)event;
 					
-					if ( model != null )
+					ClockModel clockModel = this.clockModels.get( sender );
+					
+					clockModel.setValue( price.getValue() );
+				}
+				else if ( event instanceof Quote )
+				{
+					Quote quote = (Quote)event;
+					
+					Product product = quote.getProduct();
+					
+					if ( product != null )
 					{
-						model.add( quote.getPrice() );
+						PriceGraphModel model = 
+							this.graphModel.get( product.getId() );
+						
+						if ( model != null )
+						{
+							model.add( quote.getPrice() );
+						}
+					}
+				}			
+				else if ( event instanceof Run )
+				{
+					Run run = (Run)event;
+					
+					if ( run.getLot() == null )
+					{
+						LOGGER.info( "could not find lot for auction: {}", run.getId() );
+					}
+					
+					ClockModel clockModel = this.clockModels.get( run.getClock().getId() );
+					
+					if ( clockModel != null )
+					{
+						clockModel.setRun( run );
+					}
+					else 
+					{
+						LOGGER.error( "clock not found: {}", run.getClock().getId() );
 					}
 				}
-			}			
+				else if ( event instanceof Bid || event instanceof Offer )
+				{
+					if ( this.repository.findTrader( sender ) == null )
+					{
+						this.repository.addTrader( new Trader( sender ) );
+					}		
+				}
+			}
 		}
 	}
 	

@@ -60,11 +60,6 @@ public class EventMapper implements Mapper<Event>
 						Integer.parseInt( items[3] )				// quantity
 					);
 					break;
-				case ENTRY:
-					result = new Entry(
-						items[1]									// traderId
-					);
-					break;
 				case OFFER:
 					result = new Offer( 
 						this.repository.findTrader( sender ),		// trader
@@ -147,15 +142,6 @@ public class EventMapper implements Mapper<Event>
 				bid.getLot().getId(), 
 				bid.getPrice(), 
 				bid.getQuantity() 
-			);
-		}
-		else if ( event instanceof Entry )
-		{
-			Entry entry = (Entry)event;
-			
-			result = String.format( "%1$s,%2$s",
-				entry.getType(),
-				entry.getTraderId()
 			);
 		}
 		else if ( event instanceof Tick )

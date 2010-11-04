@@ -2,6 +2,7 @@
 package com.auce.bank;
 
 import java.util.ArrayList;
+
 import java.util.Date;
 import java.util.List;
 
@@ -11,12 +12,20 @@ public class BankFacade implements Bank
 {
 	private final Bank 					bank;
 	private List<Observer<Instruction>> observers;
+	private final boolean				isDirectDebit;
 
 	public BankFacade( final Bank bank )
 	{
 		this.bank = bank;
 		
 		this.observers = new ArrayList<Observer<Instruction>>();
+
+		this.isDirectDebit = Boolean.parseBoolean( System.getProperty( "bank.direct.debit" ) );
+	}
+	
+	public boolean isDirectDebit()
+	{
+		return this.isDirectDebit;
 	}
 
 	public void addObserver ( final Observer<Instruction> observer )

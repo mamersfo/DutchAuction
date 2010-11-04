@@ -1,6 +1,7 @@
 package com.auce.auction;
 
 import java.util.HashMap;
+
 import java.util.List;
 import java.util.Map;
 
@@ -12,7 +13,7 @@ import com.auce.auction.event.Run;
 import com.auce.auction.repository.Repository;
 import com.auce.bank.Account;
 import com.auce.bank.AccountType;
-import com.auce.bank.Bank;
+import com.auce.bank.BankFacade;
 import com.auce.bank.Deposit;
 import com.auce.bank.Mutation;
 import com.auce.market.Market;
@@ -23,13 +24,12 @@ public class Auction extends ComponentSupport
 {
 	private final Repository			repository;
 	private final Market				market;
-	private final Bank					bank;
+	private final BankFacade			bank;
 	private final Account				account;
 	private final int					maxRuns;
 	private final Map<String,Purchase>	purchases;
-	private final boolean				directDebit;
 	
-	public Auction( String id, Repository repository, Market market, Bank bank )
+	public Auction( String id, Repository repository, Market market, BankFacade bank )
 	{
 		super( id );
 		
@@ -38,25 +38,15 @@ public class Auction extends ComponentSupport
 		this.market = market;
 		
 		this.bank = bank;
-		
 		String accountNumber = this.bank.issueAccountNumber();
-		
-		bank.openAccount( 
-			AccountType.CHECKING, 
-			accountNumber, 
-			id, 
-			"Westland" 
-		);		
-		
-		account = bank.findAccount( accountNumber );
+		this.bank.openAccount( AccountType.CHECKING, accountNumber, id, "Westland" );
+		this.account = bank.findAccount( accountNumber );
 		
 		this.maxRuns = Integer.parseInt( System.getProperty( "auction.max.runs" ) );
 		
 		this.period = Integer.parseInt( System.getProperty( "auction.period" ) );
 		
 		this.purchases = new HashMap<String,Purchase>();
-		
-		this.directDebit = Boolean.parseBoolean( System.getProperty( "auction.direct.debit" ) );
 	}
 	
 	public Market getMarket()
@@ -68,7 +58,7 @@ public class Auction extends ComponentSupport
 	{
 		logger.debug( "addPurchase() - {}", purchase.getReferenceNumber() );
 		
-		if ( this.directDebit )
+		if ( this.bank.isDirectDebit() )
 		{
 			Trader trader = purchase.getTrader();
 			
@@ -182,7 +172,7 @@ public class Auction extends ComponentSupport
 	@Override
 	protected void poll ()
 	{
-		if ( this.directDebit == false )
+		if ( this.bank.isDirectDebit() == false )
 		{
 			List<Mutation> mutations = this.account.listMutations();
 			

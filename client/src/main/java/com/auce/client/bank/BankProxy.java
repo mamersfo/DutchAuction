@@ -23,6 +23,7 @@ public class BankProxy extends ComponentSupport implements Bank
 	private long				balance;
 	private List<BankListener>	listeners;
 	private Account				account;
+	final private boolean		isDirectDebit;
 	
 	public BankProxy()
 	{
@@ -37,6 +38,13 @@ public class BankProxy extends ComponentSupport implements Bank
 		super.setPeriod( Integer.parseInt( System.getProperty( "bank.period" ) ) );
 		
 		this.listeners = new ArrayList<BankListener>();
+		
+		this.isDirectDebit = Boolean.parseBoolean( System.getProperty( "bank.direct.debit" ) );
+	}
+	
+	public boolean isDirectDebit()
+	{
+		return this.isDirectDebit;
 	}
 	
 	public void addBankListener( BankListener listener )

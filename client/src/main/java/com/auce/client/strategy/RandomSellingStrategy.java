@@ -12,6 +12,7 @@ import com.auce.auction.entity.Trader;
 import com.auce.auction.event.Offer;
 import com.auce.auction.event.Quote;
 import com.auce.auction.event.Sale;
+import com.auce.bank.Account;
 import com.auce.client.Client;
 import com.auce.util.Utilities;
 
@@ -65,6 +66,15 @@ public class RandomSellingStrategy implements SellingStrategy
 			{
 				int qty = stock.getQuantity();
 				
+				String accountNumber = "123456789";
+				
+				Account account = trader.getAccount();
+				
+				if ( account != null )
+				{
+					accountNumber = account.getAccountNumber();
+				}
+				
 				if ( qty > 0 )
 				{
 					this.lock( product );
@@ -73,7 +83,7 @@ public class RandomSellingStrategy implements SellingStrategy
 						trader, 
 						product, 
 						qty,
-						trader.getAccount().getAccountNumber(),
+						accountNumber,
 						Long.toString( Utilities.generateLong( 5 ) )
 					);
 				}

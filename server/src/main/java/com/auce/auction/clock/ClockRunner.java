@@ -17,6 +17,10 @@ import com.auce.auction.event.Purchase;
 import com.auce.auction.event.Run;
 import com.auce.auction.event.Tick;
 import com.auce.auction.repository.Repository;
+import com.auce.bank.AbstractAccount;
+import com.auce.bank.Account;
+import com.auce.bank.AccountType;
+import com.auce.bank.Bank;
 import com.auce.util.component.ComponentSupport;
 import com.auce.util.multicast.MulticastChannel;
 import com.auce.util.multicast.MulticastChannelEvent;
@@ -31,9 +35,9 @@ public class ClockRunner extends ComponentSupport
 	protected EventMapper		mapper;
 	protected MulticastChannel	channel;
 	protected ClockRunTask		task;
-	// protected Market			market;
+	private final Bank			bank;
 
-	public ClockRunner( Auction auction, Clock clock, Repository repository )
+	public ClockRunner( Auction auction, Clock clock, Repository repository, Bank bank )
 	{
 		super( clock.getId() );
 		
@@ -41,6 +45,7 @@ public class ClockRunner extends ComponentSupport
 		this.clock = clock;
 		this.repository = repository;
 		this.mapper = new EventMapper( this.repository );
+		this.bank = bank;
 	
 		this.period = Integer.parseInt( System.getProperty( "auction.period" ) );
 
@@ -59,8 +64,7 @@ public class ClockRunner extends ComponentSupport
 			throw new IllegalStateException( "repository not initialized" );
 		}
 		
-		logger.info( "running {} with id {}", 
-			this.getClass().getSimpleName(), this.id );
+		logger.info( "running {} with id {}", this.getClass().getSimpleName(), this.id );
 	}
 	
 	protected void poll ()
@@ -139,6 +143,21 @@ public class ClockRunner extends ComponentSupport
 		
 		if ( this.clock.getId().equals( sender ) ) return;
 		
+		Trader trader = this.repository.findTrader( sender );
+		
+		if ( trader == null )
+		{
+			trader = new Trader( sender ) ;
+
+			String accountNumber = this.bank.issueAccountNumber();
+			this.bank.openAccount( AccountType.CHECKING, accountNumber, sender, "Rotterdam" );		
+			Account account = this.bank.findAccount(accountNumber);
+			((AbstractAccount)account).setBalance( Long.parseLong( System.getProperty( "bank.start.amount" ) ) );
+			trader.setAccount( account );
+			
+			this.repository.addTrader( trader );			
+		}		
+		
 		for ( String text : messageEvent.lines() )
 		{
 			try
@@ -207,8 +226,6 @@ public class ClockRunner extends ComponentSupport
 					
 					// check funds
 					
-					Trader trader = this.repository.findTrader( sender );
-
 					int purchaseValue = bidQuantity * clockPrice;
 					
 					if ( trader.getAccount().getBalance() < purchaseValue ) 
@@ -257,15 +274,9 @@ public class ClockRunner extends ComponentSupport
 		}
 	}
 
-	/*
-	public void setMarket ( Market market )
-	{
-		this.market = market;
-	}
-	 */
-
 	@Override
-	protected void afterRunning() {
+	protected void afterRunning() 
+	{
 		// TODO Auto-generated method stub
 		
 	}
